@@ -1,4 +1,7 @@
 build/
+Doxyfile
+docs/
 .cache/
 .vscode
 .DS_store
+generate_docs.sh
