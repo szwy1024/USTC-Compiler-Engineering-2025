@@ -11,6 +11,7 @@ int lines;
 int pos_start;
 int pos_end;
 
+// 创建一个叶子结点，yylval.node中保存指向这个结点的指针
 void pass_node(char *text){
      yylval.node = new_syntax_tree_node(text);
 }
