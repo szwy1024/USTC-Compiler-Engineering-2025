@@ -82,6 +82,9 @@ Value* CminusfBuilder::visit(ASTVarDeclaration &node) {
         // 从常量中提取数组大小
         if (auto const_int = dynamic_cast<ConstantInt*>(array_size_val)) {
             array_size = const_int->get_value();
+        }else {
+            // 如果不是常量，报错
+            assert(false && "Array size must be constant");
         }
         
         // 创建数组类型
@@ -108,6 +111,15 @@ Value* CminusfBuilder::visit(ASTVarDeclaration &node) {
         else {
             // 局部数组变量
             alloca = builder->create_alloca(array_type);
+            // 局部数组初始化为0
+            for (int i = 0; i < array_size; i++) {
+                auto element_ptr = builder->create_gep(alloca, {CONST_INT(0), CONST_INT(i)});
+                if (node.type == TYPE_INT) {
+                    builder->create_store(CONST_INT(0), element_ptr);
+                } else {
+                    builder->create_store(CONST_FP(0.0f), element_ptr);
+                }
+            }
         }
     }
     else {
