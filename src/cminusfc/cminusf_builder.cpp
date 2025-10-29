@@ -60,6 +60,7 @@ Value* CminusfBuilder::visit(ASTNum &node) {
 Value* CminusfBuilder::visit(ASTVarDeclaration &node) {
     // TODO: This function is empty now.
     // Add some code here.
+    
     return nullptr;
 }
 
@@ -67,6 +68,7 @@ Value* CminusfBuilder::visit(ASTFunDeclaration &node) {
     FunctionType *fun_type;
     Type *ret_type;
     std::vector<Type *> param_types;
+    // 获取函数返回值
     if (node.type == TYPE_INT)
         ret_type = INT32_T;
     else if (node.type == TYPE_FLOAT)
@@ -74,6 +76,7 @@ Value* CminusfBuilder::visit(ASTFunDeclaration &node) {
     else
         ret_type = VOID_T;
 
+    // 获取函数参数列表
     for (auto &param : node.params) {
         if (param->type == TYPE_INT) {
             if (param->isarray) {
@@ -90,27 +93,41 @@ Value* CminusfBuilder::visit(ASTFunDeclaration &node) {
         }
     }
 
+    // 获取函数类型
     fun_type = FunctionType::get(ret_type, param_types);
+    // 创建函数
     auto func = Function::create(fun_type, node.id, module.get());
+    // 将刚创建的函数添加到作用域中
     scope.push(node.id, func);
+    // 在context中存储当前处理的函数
     context.func = func;
+    // 创建基本块
     auto funBB = BasicBlock::create(module.get(), "entry", func);
+    // 设置代码插入位置
     builder->set_insert_point(funBB);
+    // 进入函数的作用域
     scope.enter();
     context.pre_enter_scope = true;
     std::vector<Value *> args;
+    // 获取函数的参数
     for (auto &arg : func->get_args()) {
         args.push_back(&arg);
     }
     for (unsigned int i = 0; i < node.params.size(); ++i) {
         auto* param_i = node.params[i]->accept(*this);
+        // 将AST中的变量名赋值给args[i]
         args[i]->set_name(node.params[i]->id);
+        // 创建指令
         builder->create_store(args[i], param_i);
+        // 将变量名添加到作用域中
         scope.push(args[i]->get_name(), param_i);
     }
+    // 处理复合语句
     node.compound_stmt->accept(*this);
+    // 如果当前基本块基本块不进行跳转操作
     if (builder->get_insert_block()->get_terminator() == nullptr) 
     {
+        // 添加函数返回值语句
         if (context.func->get_return_type()->is_void_type())
             builder->create_void_ret();
         else if (context.func->get_return_type()->is_float_type())
@@ -118,6 +135,7 @@ Value* CminusfBuilder::visit(ASTFunDeclaration &node) {
         else
             builder->create_ret(CONST_INT(0));
     }
+    // 退出函数的作用域
     scope.exit();
     return nullptr;
 }
@@ -126,6 +144,7 @@ Value* CminusfBuilder::visit(ASTParam &node) {
     return nullptr;
 }
 
+// 处理复合语句
 Value* CminusfBuilder::visit(ASTCompoundStmt &node) {
     // TODO: This function is not complete.
     // You may need to add some code here

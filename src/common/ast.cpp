@@ -135,11 +135,14 @@ ASTNode *AST::transform_node_iter(syntax_tree_node *n) {
     return node;
   } else if (_STR_EQ(n->name, "compound-stmt")) {
     auto node = new ASTCompoundStmt();
+    // 处理local_declarations
     if (n->children[1]->children_num == 2) {
       // flatten local declarations
       auto list_ptr = n->children[1];
       std::stack<syntax_tree_node *> s;
       while (list_ptr->children_num == 2) {
+        // 将var-declaration入栈，list_ptr=local-declarations
+        // 直到local-declarations=empty
         s.push(list_ptr->children[1]);
         list_ptr = list_ptr->children[0];
       }
@@ -148,11 +151,12 @@ ASTNode *AST::transform_node_iter(syntax_tree_node *n) {
         auto decl_node =
             static_cast<ASTVarDeclaration *>(transform_node_iter(s.top()));
         auto decl_node_ptr = std::shared_ptr<ASTVarDeclaration>(decl_node);
+        // 将decl_node_ptr添加到ASTCompoundStmt的local_declarations列表中
         node->local_declarations.push_back(decl_node_ptr);
         s.pop();
       }
     }
-
+    // 处理statement-list
     if (n->children[2]->children_num == 2) {
       // flatten statement-list
       auto list_ptr = n->children[2];
