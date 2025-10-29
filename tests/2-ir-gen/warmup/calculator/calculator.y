@@ -80,6 +80,7 @@ void yyerror(const char * s) {
 }
 
 syntax_tree *parse(const char *input_path) {
+    // 参数中没有文件路径，将yyin重定向到标准输入
     if (input_path != NULL) {
         if (!(yyin = fopen(input_path, "r"))) {
             fprintf(stderr, "[ERR] Open input file %s failed.\n", input_path);
