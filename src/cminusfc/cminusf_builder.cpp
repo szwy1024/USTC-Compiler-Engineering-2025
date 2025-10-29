@@ -285,7 +285,7 @@ Value* CminusfBuilder::visit(ASTCompoundStmt &node) {
     
     // 退出作用域
     scope.exit();
-    
+
     return nullptr;
 }
 
@@ -338,6 +338,67 @@ Value* CminusfBuilder::visit(ASTSelectionStmt &node) {
 Value* CminusfBuilder::visit(ASTIterationStmt &node) {
     // TODO: This function is empty now.
     // Add some code here.
+
+    
+    // 获取当前函数
+    Function *current_func = context.func;
+    
+    // 创建循环的基本块
+    auto *cond_bb = BasicBlock::create(module.get(), "while.cond", current_func);
+    auto *body_bb = BasicBlock::create(module.get(), "while.body", current_func);
+    auto *end_bb = BasicBlock::create(module.get(), "while.end", current_func);
+    
+    // 保存外层的控制流目标
+    BasicBlock *outer_break_target = context.break_target;
+    BasicBlock *outer_continue_target = context.continue_target;
+    
+    // 设置当前循环的控制流目标
+    context.break_target = end_bb;        // break 跳转到循环结束
+    context.continue_target = cond_bb;    // continue 跳转到条件判断
+
+    // 生成跳转到条件判断的指令
+    builder->create_br(cond_bb);
+    
+    // 设置插入点到条件判断基本块
+    builder->set_insert_point(cond_bb);
+    
+    // 处理循环条件表达式
+    Value *cond_value = node.expression->accept(*this);
+
+    // 确保条件值是布尔类型
+    if (cond_value->get_type()->is_integer_type()) {
+        // 对于整数类型，与0比较
+        if (cond_value->get_type()->is_int32_type()) {
+            cond_value = builder->create_icmp_ne(cond_value, CONST_INT(0));
+        } else if (cond_value->get_type()->is_int1_type()) {
+            // 已经是布尔类型，无需转换
+        }
+    } else if (cond_value->get_type()->is_float_type()) {
+        // 对于浮点类型，与0.0比较
+        cond_value = builder->create_fcmp_ne(cond_value, CONST_FP(0.0f));
+    }
+
+    // 根据条件值跳转到循环体或结束
+    builder->create_cond_br(cond_value, body_bb, end_bb);
+    
+    // 设置插入点到循环体基本块
+    builder->set_insert_point(body_bb);
+    
+    // 处理循环体语句
+    node.statement->accept(*this);
+    
+    // 如果循环体没有终止（没有return/break等），生成跳转回条件判断的指令
+    if (!builder->get_insert_block()->is_terminated()) {
+        builder->create_br(cond_bb);
+    }
+
+    // 设置插入点到循环结束基本块
+    builder->set_insert_point(end_bb);
+    
+    // 恢复外层的控制流目标
+    context.break_target = outer_break_target;
+    context.continue_target = outer_continue_target;
+    
     return nullptr;
 }
 

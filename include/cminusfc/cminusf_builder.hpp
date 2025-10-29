@@ -115,5 +115,9 @@ class CminusfBuilder : public ASTVisitor {
         Function *func = nullptr;
         // detect scope pre-enter (for elegance only)
         bool pre_enter_scope = false;
+        // break 语句跳转的目标基本块
+        BasicBlock *break_target = nullptr;   
+        // continue 语句跳转的目标基本块
+        BasicBlock *continue_target = nullptr; 
     } context;
 };
