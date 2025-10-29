@@ -68,10 +68,14 @@ ASTNode *AST::transform_node_iter(syntax_tree_node *n) {
     // id & num
     // 由不同的表达式填充
     if (n->children_num == 3) {
+      // 变量声明
       node->id = n->children[1]->name;
     } else if (n->children_num == 6) {
+      // 数组声明
       node->id = n->children[1]->name;
+      // num中存放数组大小
       int num = std::stoi(n->children[3]->name);
+      // 创建一个结点用于存放数组大小
       auto num_node = std::make_shared<ASTNum>();
       num_node->i_val = num;
       num_node->type = TYPE_INT;

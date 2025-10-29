@@ -61,7 +61,82 @@ Value* CminusfBuilder::visit(ASTVarDeclaration &node) {
     // TODO: This function is empty now.
     // Add some code here.
     
-    return nullptr;
+    // 获取变量名称
+    std::string name=node.id;
+    Type* var_type=nullptr;
+    Value*  alloca=nullptr;
+
+    //判断变量类型
+    if (node.type == TYPE_INT) {
+        var_type = INT32_T;
+    } else {
+        var_type = FLOAT_T;
+    }
+
+    // 如果是数组声明
+    if (node.num != nullptr) {
+        // 获取数组大小
+        auto array_size_val = node.num->accept(*this);
+        unsigned array_size = 0;
+        
+        // 从常量中提取数组大小
+        if (auto const_int = dynamic_cast<ConstantInt*>(array_size_val)) {
+            array_size = const_int->get_value();
+        }
+        
+        // 创建数组类型
+        auto array_type = ArrayType::get(var_type, array_size);
+        
+        if (scope.in_global()) {
+            // 全局数组变量
+            std::vector<Constant*> init_vals(array_size);
+            Constant* init_val = nullptr;
+            
+            if (node.type == TYPE_INT) {
+                init_val = CONST_INT(0);
+            } else {
+                init_val = CONST_FP(0.0f);
+            }
+            
+            for (unsigned i = 0; i < array_size; i++) {
+                init_vals[i] = init_val;
+            }
+            
+            auto const_array = ConstantArray::get(array_type, init_vals);
+            alloca = GlobalVariable::create(name, module.get(), array_type, false, const_array);
+        }
+        else {
+            // 局部数组变量
+            alloca = builder->create_alloca(array_type);
+        }
+    }
+    else {
+        // 普通变量声明
+        if (scope.in_global()) {
+            // 全局变量
+            Constant* init_val = nullptr;
+            if (node.type == TYPE_INT) {
+                init_val = CONST_INT(0);
+            } else {
+                init_val = CONST_FP(0.0f);
+            }
+            alloca = GlobalVariable::create(name, module.get(), var_type, false, init_val);
+        } else {
+            // 局部变量
+            alloca = builder->create_alloca(var_type);
+            
+            // 局部变量初始化为0
+            if (node.type == TYPE_INT) {
+                builder->create_store(CONST_INT(0), alloca);
+            } else {
+                builder->create_store(CONST_FP(0.0f), alloca);
+            }
+        }
+    }
+    
+    // 将变量添加到作用域
+    scope.push(name, alloca);
+    return alloca;
 }
 
 Value* CminusfBuilder::visit(ASTFunDeclaration &node) {
@@ -142,7 +217,7 @@ Value* CminusfBuilder::visit(ASTFunDeclaration &node) {
 
 Value* CminusfBuilder::visit(ASTParam &node) {
     // 这段代码应该实现为函数参数分配栈上空间，测试案例一直是无参数，所以不会被调用
-    // 获取对应的LLVM类型
+    // 获取对应的LLVM类型，参数只有int和float两种类型，无void型
     Type * param_type;
     if (node.type == TYPE_INT)
         param_type = INT32_T;
