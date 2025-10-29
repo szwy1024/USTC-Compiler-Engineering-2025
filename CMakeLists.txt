@@ -21,13 +21,20 @@ if(NOT(CMAKE_BUILD_TYPE_SHADOW STREQUAL CMAKE_BUILD_TYPE))
 endif()
 
 set(CMAKE_CXX_STANDARD 17)
+# 生成编译命令数据库
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(FLEX REQUIRED)
 find_package(BISON REQUIRED)
+# 使用 CMake 的 find_package 命令找到 LLVM 时，设置一系列变量，其中包括：
+#- LLVM_INCLUDE_DIRS: 包含 LLVM 头文件目录的列表
+#- LLVM_DEFINITIONS: 预处理器定义
+#- LLVM_LIBRARY_DIRS: 库文件目录
 find_package(LLVM REQUIRED CONFIG)
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
+message(STATUS "LLVM include directories: ${LLVM_INCLUDE_DIRS}")
+# llvm组件映射
 llvm_map_components_to_libnames(
     llvm_libs
     support
@@ -42,8 +49,10 @@ INCLUDE_DIRECTORIES(
     ${LLVM_INCLUDE_DIRS}
 )
 
+# 添加 LLVM 相关预处理器定义
 add_definitions(${LLVM_DEFINITIONS})
 
+# 设置输出目录
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})

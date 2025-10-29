@@ -24,11 +24,15 @@ int main(int argc, char *argv[]) {
     } else {
         printf("Input an arithmatic expression (press Ctrl+D in a new line after you finish the expression):\n");
     }
-
+    // 建立syntax_tree, gt->root存放syntax_tree根结点
     tree = parse(input);
+    // 有参构造，使用syntax_tree构造AST
     CalcAST ast(tree);
+    // 创建一个builder对象
     CalcBuilder builder;
+    // 使用AST创建moudle
     auto module = builder.build(ast);
+    // 以下都是打印指令的部分
     auto IR = module->print();
 
     std::ofstream output_stream;

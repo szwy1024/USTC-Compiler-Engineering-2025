@@ -34,13 +34,14 @@ std::unique_ptr<Module> CalcBuilder::build(CalcAST &ast) {
     builder->create_ret(ConstantInt::get(0, module.get()));
     return std::move(module);
 }
-// 以下函数是不是永远不会被调用？
+// 下面这个函数是不是永远不会被调用？
 void CalcBuilder::visit(CalcASTInput &node) { node.expression->accept(*this); }
 void CalcBuilder::visit(CalcASTExpression &node) {
     if (node.expression == nullptr) {
         // 如果使用产生式 expression : trem，使用term调用accept函数
         node.term->accept(*this);
     } else {
+        // 调用左子树的accept函数
         node.expression->accept(*this);
         auto l_val = val;
         node.term->accept(*this);
@@ -76,5 +77,6 @@ void CalcBuilder::visit(CalcASTTerm &node) {
 }
 
 void CalcBuilder::visit(CalcASTNum &node) {
+    // 用Builder中的val来保存node.val
     val = ConstantInt::get(node.val, module.get());
 }
