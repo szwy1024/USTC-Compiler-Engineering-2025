@@ -342,11 +342,14 @@ Value* CminusfBuilder::visit(ASTIterationStmt &node) {
     
     // 获取当前函数
     Function *current_func = context.func;
+
+    // 生成唯一的基本块标签
+    static int while_counter = 0;
+    std::string prefix = "while_" + std::to_string(while_counter++);
     
-    // 创建循环的基本块
-    auto *cond_bb = BasicBlock::create(module.get(), "while.cond", current_func);
-    auto *body_bb = BasicBlock::create(module.get(), "while.body", current_func);
-    auto *end_bb = BasicBlock::create(module.get(), "while.end", current_func);
+    auto *cond_bb = BasicBlock::create(module.get(), prefix + "_cond", current_func);
+    auto *body_bb = BasicBlock::create(module.get(), prefix + "_body", current_func);
+    auto *end_bb = BasicBlock::create(module.get(), prefix + "_end", current_func);
     
     // 保存外层的控制流目标
     BasicBlock *outer_break_target = context.break_target;
@@ -511,7 +514,83 @@ Value* CminusfBuilder::visit(ASTAssignExpression &node) {
 Value* CminusfBuilder::visit(ASTSimpleExpression &node) {
     // TODO: This function is empty now.
     // Add some code here.
-    return nullptr;
+    // 处理左侧加法表达式
+    Value *left_val = node.additive_expression_l->accept(*this);
+    
+    // 如果没有右侧表达式，直接返回左侧值
+    if (node.additive_expression_r == nullptr) {
+        return left_val;
+    }
+    
+    // 处理右侧加法表达式
+    Value *right_val = node.additive_expression_r->accept(*this);
+    
+    // 类型提升：确保左右操作数类型一致
+    bool is_int_type = promote(&*builder, &left_val, &right_val);
+    
+    Value *result = nullptr;
+
+    // 根据操作符生成对应的比较指令
+    switch (node.op) {
+        case OP_LT:   // <
+            if (is_int_type) {
+                result = builder->create_icmp_lt(left_val, right_val);
+            } else {
+                result = builder->create_fcmp_lt(left_val, right_val);
+            }
+            break;
+            
+        case OP_LE:   // <=
+            if (is_int_type) {
+                result = builder->create_icmp_le(left_val, right_val);
+            } else {
+                result = builder->create_fcmp_le(left_val, right_val);
+            }
+            break;
+            
+        case OP_GT:   // >
+            if (is_int_type) {
+                result = builder->create_icmp_gt(left_val, right_val);
+            } else {
+                result = builder->create_fcmp_gt(left_val, right_val);
+            }
+            break;
+            
+        case OP_GE:   // >=
+            if (is_int_type) {
+                result = builder->create_icmp_ge(left_val, right_val);
+            } else {
+                result = builder->create_fcmp_ge(left_val, right_val);
+            }
+            break;
+            
+        case OP_EQ:   // ==
+            if (is_int_type) {
+                result = builder->create_icmp_eq(left_val, right_val);
+            } else {
+                result = builder->create_fcmp_eq(left_val, right_val);
+            }
+            break;
+            
+        case OP_NEQ:  // !=
+            if (is_int_type) {
+                result = builder->create_icmp_ne(left_val, right_val);
+            } else {
+                result = builder->create_fcmp_ne(left_val, right_val);
+            }
+            break;
+            
+        default:
+            // 报错
+            assert(false && "Unknown relational operator");
+            break;
+    }
+
+    // 将布尔结果转换为整数，因为output函数期望整数参数
+    if (result->get_type()->is_int1_type()) {
+        result = builder->create_zext(result, INT32_T);
+    }
+    return result;
 }
 
 Value* CminusfBuilder::visit(ASTAdditiveExpression &node) {
