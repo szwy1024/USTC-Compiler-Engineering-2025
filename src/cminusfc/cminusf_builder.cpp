@@ -119,7 +119,7 @@ Value* CminusfBuilder::visit(ASTFunDeclaration &node) {
         args[i]->set_name(node.params[i]->id);
         // 创建指令
         builder->create_store(args[i], param_i);
-        // 将变量名添加到作用域中
+        // 将参数名和内存地址添加到作用域中
         scope.push(args[i]->get_name(), param_i);
     }
     // 处理复合语句
@@ -141,7 +141,24 @@ Value* CminusfBuilder::visit(ASTFunDeclaration &node) {
 }
 
 Value* CminusfBuilder::visit(ASTParam &node) {
-    return nullptr;
+    // 这段代码应该实现为函数参数分配栈上空间，测试案例一直是无参数，所以不会被调用
+    // 获取对应的LLVM类型
+    Type * param_type;
+    if (node.type == TYPE_INT)
+        param_type = INT32_T;
+    else{
+        param_type = FLOAT_T;
+    }
+    // 如果参数是数组类型，则转换为指针类型
+    if (node.isarray) {
+        if (node.type == TYPE_INT) {
+            param_type = INT32PTR_T;
+        } else {
+            param_type = FLOATPTR_T;
+        }
+    }
+    auto alloca=builder->create_alloca(param_type);
+    return alloca;
 }
 
 // 处理复合语句
@@ -384,6 +401,7 @@ Value* CminusfBuilder::visit(ASTTerm &node) {
 }
 
 Value* CminusfBuilder::visit(ASTCall &node) {
+    // 在作用域中根据函数名查找函数
     auto *func = dynamic_cast<Function *>(scope.find(node.id));
     std::vector<Value *> args;
     auto param_type = func->get_function_type()->param_begin();
