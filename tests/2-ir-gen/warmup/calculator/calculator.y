@@ -92,7 +92,9 @@ syntax_tree *parse(const char *input_path) {
 
     lines = pos_start = pos_end = 1;
     gt = new_syntax_tree();
+    // 初始化词法分析器
     yyrestart(yyin);
+    // 开始进行语法分析
     yyparse();
     return gt;
 }

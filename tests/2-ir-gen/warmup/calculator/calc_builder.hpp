@@ -11,6 +11,7 @@
 
 class CalcBuilder : public CalcASTVisitor {
   public:
+    // 使用AST创建module
     std::unique_ptr<Module> build(CalcAST &ast);
 
   private:

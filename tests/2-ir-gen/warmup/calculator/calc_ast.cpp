@@ -102,6 +102,8 @@ CalcASTNode *CalcAST::transform_node_iter(syntax_tree_node *n) {
     }
 }
 
+// 每个抽象语法树的结点都要重写accep方法
+// 
 void CalcASTNum::accept(CalcASTVisitor &visitor) { visitor.visit(*this); }
 void CalcASTTerm::accept(CalcASTVisitor &visitor) { visitor.visit(*this); }
 void CalcASTExpression::accept(CalcASTVisitor &visitor) {
@@ -109,10 +111,17 @@ void CalcASTExpression::accept(CalcASTVisitor &visitor) {
 }
 
 void CalcASTInput::accept(CalcASTVisitor &visitor) {
+    // 这里代码好像有点问题，应该先visit自身
+    // void CalcBuilder::visit(CalcASTInput &node) { node.expression->accept(*this); }
+    // 然后在CalcBuilder::visit中调用node.expression->accept(*this)，接受visitor对象
     expression->accept(visitor);
 }
 
 void CalcASTFactor::accept(CalcASTVisitor &visitor) {
+    // 动态类型转换，转换失败返回nullptr
+    // 这里也同理
+    // 首先visitor.visit(*this);
+    // 然后在 void CalcBuilder::visit(CalcASTFactor &node) 中 对node进行动态类型转换
     auto expr = dynamic_cast<CalcASTExpression *>(this);
     if (expr) {
         expr->accept(visitor);
