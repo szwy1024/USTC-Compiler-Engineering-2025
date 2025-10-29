@@ -242,15 +242,50 @@ Value* CminusfBuilder::visit(ASTCompoundStmt &node) {
     // You may need to add some code here
     // to deal with complex statements. 
     
+    // 进入新的作用域
+    scope.enter();
+    
+    // 保存外层的控制流目标
+    BasicBlock *outer_break = context.break_target;
+    BasicBlock *outer_continue = context.continue_target;
+    
+    // 重置当前的控制流目标（复合语句内部可能有自己的循环）
+    context.break_target = nullptr;
+    context.continue_target = nullptr;
+    
+    // 处理局部变量声明
     for (auto &decl : node.local_declarations) {
         decl->accept(*this);
     }
-
+    
+    // 处理语句列表
+    BasicBlock *current_bb = builder->get_insert_block();
     for (auto &stmt : node.statement_list) {
+        // 如果前一个语句终止了基本块，需要创建新的基本块
+        if (current_bb->is_terminated() && current_bb == builder->get_insert_block()) {
+            auto new_bb = BasicBlock::create(module.get(), "", context.func);
+            builder->set_insert_point(new_bb);
+            current_bb = new_bb;
+        }
+        
+        // 处理当前语句
         stmt->accept(*this);
-        if (builder->get_insert_block()->get_terminator() == nullptr)
+        
+        // 更新当前基本块引用
+        current_bb = builder->get_insert_block();
+        
+        // 如果遇到break或continue，提前退出
+        if (context.break_target || context.continue_target) {
             break;
+        }
     }
+    // 恢复外层的控制流目标
+    context.break_target = outer_break;
+    context.continue_target = outer_continue;
+    
+    // 退出作用域
+    scope.exit();
+    
     return nullptr;
 }
 
