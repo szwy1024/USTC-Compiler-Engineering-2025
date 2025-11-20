@@ -60,13 +60,102 @@ Value* CminusfBuilder::visit(ASTNum &node) {
 Value* CminusfBuilder::visit(ASTVarDeclaration &node) {
     // TODO: This function is empty now.
     // Add some code here.
-    return nullptr;
+    
+    // 获取变量名称
+    std::string name=node.id;
+    Type* var_type=nullptr;
+    Value*  alloca=nullptr;
+
+    //判断变量类型
+    if (node.type == TYPE_INT) {
+        var_type = INT32_T;
+    } else {
+        var_type = FLOAT_T;
+    }
+
+    // 如果是数组声明
+    if (node.num != nullptr) {
+        // 获取数组大小
+        auto array_size_val = node.num->accept(*this);
+        unsigned array_size = 0;
+        
+        // 从常量中提取数组大小
+        if (auto const_int = dynamic_cast<ConstantInt*>(array_size_val)) {
+            array_size = const_int->get_value();
+        }else {
+            // 如果不是常量，报错
+            assert(false && "Array size must be constant");
+        }
+        
+        // 创建数组类型
+        auto array_type = ArrayType::get(var_type, array_size);
+        
+        if (scope.in_global()) {
+            // 全局数组变量
+            std::vector<Constant*> init_vals(array_size);
+            Constant* init_val = nullptr;
+            
+            if (node.type == TYPE_INT) {
+                init_val = CONST_INT(0);
+            } else {
+                init_val = CONST_FP(0.0f);
+            }
+            
+            for (unsigned i = 0; i < array_size; i++) {
+                init_vals[i] = init_val;
+            }
+            
+            auto const_array = ConstantArray::get(array_type, init_vals);
+            alloca = GlobalVariable::create(name, module.get(), array_type, false, const_array);
+        }
+        else {
+            // 局部数组变量
+            alloca = builder->create_alloca(array_type);
+            // 局部数组初始化为0
+            for (int i = 0; i < array_size; i++) {
+                auto element_ptr = builder->create_gep(alloca, {CONST_INT(0), CONST_INT(i)});
+                if (node.type == TYPE_INT) {
+                    builder->create_store(CONST_INT(0), element_ptr);
+                } else {
+                    builder->create_store(CONST_FP(0.0f), element_ptr);
+                }
+            }
+        }
+    }
+    else {
+        // 普通变量声明
+        if (scope.in_global()) {
+            // 全局变量
+            Constant* init_val = nullptr;
+            if (node.type == TYPE_INT) {
+                init_val = CONST_INT(0);
+            } else {
+                init_val = CONST_FP(0.0f);
+            }
+            alloca = GlobalVariable::create(name, module.get(), var_type, false, init_val);
+        } else {
+            // 局部变量
+            alloca = builder->create_alloca(var_type);
+            
+            // 局部变量初始化为0
+            if (node.type == TYPE_INT) {
+                builder->create_store(CONST_INT(0), alloca);
+            } else {
+                builder->create_store(CONST_FP(0.0f), alloca);
+            }
+        }
+    }
+    
+    // 将变量添加到作用域
+    scope.push(name, alloca);
+    return alloca;
 }
 
 Value* CminusfBuilder::visit(ASTFunDeclaration &node) {
     FunctionType *fun_type;
     Type *ret_type;
     std::vector<Type *> param_types;
+    // 获取函数返回值
     if (node.type == TYPE_INT)
         ret_type = INT32_T;
     else if (node.type == TYPE_FLOAT)
@@ -74,6 +163,7 @@ Value* CminusfBuilder::visit(ASTFunDeclaration &node) {
     else
         ret_type = VOID_T;
 
+    // 获取函数参数列表
     for (auto &param : node.params) {
         if (param->type == TYPE_INT) {
             if (param->isarray) {
@@ -90,27 +180,41 @@ Value* CminusfBuilder::visit(ASTFunDeclaration &node) {
         }
     }
 
+    // 获取函数类型
     fun_type = FunctionType::get(ret_type, param_types);
+    // 创建函数
     auto func = Function::create(fun_type, node.id, module.get());
+    // 将刚创建的函数添加到作用域中
     scope.push(node.id, func);
+    // 在context中存储当前处理的函数
     context.func = func;
+    // 创建基本块
     auto funBB = BasicBlock::create(module.get(), "entry", func);
+    // 设置代码插入位置
     builder->set_insert_point(funBB);
+    // 进入函数的作用域
     scope.enter();
     context.pre_enter_scope = true;
     std::vector<Value *> args;
+    // 获取函数的参数
     for (auto &arg : func->get_args()) {
         args.push_back(&arg);
     }
     for (unsigned int i = 0; i < node.params.size(); ++i) {
         auto* param_i = node.params[i]->accept(*this);
+        // 将AST中的变量名赋值给args[i]
         args[i]->set_name(node.params[i]->id);
+        // 创建指令
         builder->create_store(args[i], param_i);
+        // 将参数名和内存地址添加到作用域中
         scope.push(args[i]->get_name(), param_i);
     }
+    // 处理复合语句
     node.compound_stmt->accept(*this);
+    // 如果当前基本块基本块不进行跳转操作
     if (builder->get_insert_block()->get_terminator() == nullptr) 
     {
+        // 添加函数返回值语句
         if (context.func->get_return_type()->is_void_type())
             builder->create_void_ret();
         else if (context.func->get_return_type()->is_float_type())
@@ -118,28 +222,82 @@ Value* CminusfBuilder::visit(ASTFunDeclaration &node) {
         else
             builder->create_ret(CONST_INT(0));
     }
+    // 退出函数的作用域
     scope.exit();
     return nullptr;
 }
 
 Value* CminusfBuilder::visit(ASTParam &node) {
-    return nullptr;
+    // 这段代码应该实现为函数参数分配栈上空间，测试案例一直是无参数，所以不会被调用
+    // 获取对应的LLVM类型，参数只有int和float两种类型，无void型
+    Type * param_type;
+    if (node.type == TYPE_INT)
+        param_type = INT32_T;
+    else{
+        param_type = FLOAT_T;
+    }
+    // 如果参数是数组类型，则转换为指针类型
+    if (node.isarray) {
+        if (node.type == TYPE_INT) {
+            param_type = INT32PTR_T;
+        } else {
+            param_type = FLOATPTR_T;
+        }
+    }
+    auto alloca=builder->create_alloca(param_type);
+    return alloca;
 }
 
+// 处理复合语句
 Value* CminusfBuilder::visit(ASTCompoundStmt &node) {
     // TODO: This function is not complete.
     // You may need to add some code here
     // to deal with complex statements. 
     
+    // 进入新的作用域
+    scope.enter();
+    
+    // 保存外层的控制流目标
+    BasicBlock *outer_break = context.break_target;
+    BasicBlock *outer_continue = context.continue_target;
+    
+    // 重置当前的控制流目标（复合语句内部可能有自己的循环）
+    context.break_target = nullptr;
+    context.continue_target = nullptr;
+    
+    // 处理局部变量声明
     for (auto &decl : node.local_declarations) {
         decl->accept(*this);
     }
-
+    
+    // 处理语句列表
+    BasicBlock *current_bb = builder->get_insert_block();
     for (auto &stmt : node.statement_list) {
+        // 如果前一个语句终止了基本块，需要创建新的基本块
+        if (current_bb->is_terminated() && current_bb == builder->get_insert_block()) {
+            auto new_bb = BasicBlock::create(module.get(), "", context.func);
+            builder->set_insert_point(new_bb);
+            current_bb = new_bb;
+        }
+        
+        // 处理当前语句
         stmt->accept(*this);
-        if (builder->get_insert_block()->get_terminator() == nullptr)
+        
+        // 更新当前基本块引用
+        current_bb = builder->get_insert_block();
+        
+        // 如果遇到break或continue，提前退出
+        if (context.break_target || context.continue_target) {
             break;
+        }
     }
+    // 恢复外层的控制流目标
+    context.break_target = outer_break;
+    context.continue_target = outer_continue;
+    
+    // 退出作用域
+    scope.exit();
+
     return nullptr;
 }
 
@@ -192,6 +350,70 @@ Value* CminusfBuilder::visit(ASTSelectionStmt &node) {
 Value* CminusfBuilder::visit(ASTIterationStmt &node) {
     // TODO: This function is empty now.
     // Add some code here.
+
+    
+    // 获取当前函数
+    Function *current_func = context.func;
+
+    // 生成唯一的基本块标签
+    static int while_counter = 0;
+    std::string prefix = "while_" + std::to_string(while_counter++);
+    
+    auto *cond_bb = BasicBlock::create(module.get(), prefix + "_cond", current_func);
+    auto *body_bb = BasicBlock::create(module.get(), prefix + "_body", current_func);
+    auto *end_bb = BasicBlock::create(module.get(), prefix + "_end", current_func);
+    
+    // 保存外层的控制流目标
+    BasicBlock *outer_break_target = context.break_target;
+    BasicBlock *outer_continue_target = context.continue_target;
+    
+    // 设置当前循环的控制流目标
+    context.break_target = end_bb;        // break 跳转到循环结束
+    context.continue_target = cond_bb;    // continue 跳转到条件判断
+
+    // 生成跳转到条件判断的指令
+    builder->create_br(cond_bb);
+    
+    // 设置插入点到条件判断基本块
+    builder->set_insert_point(cond_bb);
+    
+    // 处理循环条件表达式
+    Value *cond_value = node.expression->accept(*this);
+
+    // 确保条件值是布尔类型
+    if (cond_value->get_type()->is_integer_type()) {
+        // 对于整数类型，与0比较
+        if (cond_value->get_type()->is_int32_type()) {
+            cond_value = builder->create_icmp_ne(cond_value, CONST_INT(0));
+        } else if (cond_value->get_type()->is_int1_type()) {
+            // 已经是布尔类型，无需转换
+        }
+    } else if (cond_value->get_type()->is_float_type()) {
+        // 对于浮点类型，与0.0比较
+        cond_value = builder->create_fcmp_ne(cond_value, CONST_FP(0.0f));
+    }
+
+    // 根据条件值跳转到循环体或结束
+    builder->create_cond_br(cond_value, body_bb, end_bb);
+    
+    // 设置插入点到循环体基本块
+    builder->set_insert_point(body_bb);
+    
+    // 处理循环体语句
+    node.statement->accept(*this);
+    
+    // 如果循环体没有终止（没有return/break等），生成跳转回条件判断的指令
+    if (!builder->get_insert_block()->is_terminated()) {
+        builder->create_br(cond_bb);
+    }
+
+    // 设置插入点到循环结束基本块
+    builder->set_insert_point(end_bb);
+    
+    // 恢复外层的控制流目标
+    context.break_target = outer_break_target;
+    context.continue_target = outer_continue_target;
+    
     return nullptr;
 }
 
@@ -304,7 +526,83 @@ Value* CminusfBuilder::visit(ASTAssignExpression &node) {
 Value* CminusfBuilder::visit(ASTSimpleExpression &node) {
     // TODO: This function is empty now.
     // Add some code here.
-    return nullptr;
+    // 处理左侧加法表达式
+    Value *left_val = node.additive_expression_l->accept(*this);
+    
+    // 如果没有右侧表达式，直接返回左侧值
+    if (node.additive_expression_r == nullptr) {
+        return left_val;
+    }
+    
+    // 处理右侧加法表达式
+    Value *right_val = node.additive_expression_r->accept(*this);
+    
+    // 类型提升：确保左右操作数类型一致
+    bool is_int_type = promote(&*builder, &left_val, &right_val);
+    
+    Value *result = nullptr;
+
+    // 根据操作符生成对应的比较指令
+    switch (node.op) {
+        case OP_LT:   // <
+            if (is_int_type) {
+                result = builder->create_icmp_lt(left_val, right_val);
+            } else {
+                result = builder->create_fcmp_lt(left_val, right_val);
+            }
+            break;
+            
+        case OP_LE:   // <=
+            if (is_int_type) {
+                result = builder->create_icmp_le(left_val, right_val);
+            } else {
+                result = builder->create_fcmp_le(left_val, right_val);
+            }
+            break;
+            
+        case OP_GT:   // >
+            if (is_int_type) {
+                result = builder->create_icmp_gt(left_val, right_val);
+            } else {
+                result = builder->create_fcmp_gt(left_val, right_val);
+            }
+            break;
+            
+        case OP_GE:   // >=
+            if (is_int_type) {
+                result = builder->create_icmp_ge(left_val, right_val);
+            } else {
+                result = builder->create_fcmp_ge(left_val, right_val);
+            }
+            break;
+            
+        case OP_EQ:   // ==
+            if (is_int_type) {
+                result = builder->create_icmp_eq(left_val, right_val);
+            } else {
+                result = builder->create_fcmp_eq(left_val, right_val);
+            }
+            break;
+            
+        case OP_NEQ:  // !=
+            if (is_int_type) {
+                result = builder->create_icmp_ne(left_val, right_val);
+            } else {
+                result = builder->create_fcmp_ne(left_val, right_val);
+            }
+            break;
+            
+        default:
+            // 报错
+            assert(false && "Unknown relational operator");
+            break;
+    }
+
+    // 将布尔结果转换为整数，因为output函数期望整数参数
+    if (result->get_type()->is_int1_type()) {
+        result = builder->create_zext(result, INT32_T);
+    }
+    return result;
 }
 
 Value* CminusfBuilder::visit(ASTAdditiveExpression &node) {
@@ -365,6 +663,7 @@ Value* CminusfBuilder::visit(ASTTerm &node) {
 }
 
 Value* CminusfBuilder::visit(ASTCall &node) {
+    // 在作用域中根据函数名查找函数
     auto *func = dynamic_cast<Function *>(scope.find(node.id));
     std::vector<Value *> args;
     auto param_type = func->get_function_type()->param_begin();

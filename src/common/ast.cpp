@@ -68,10 +68,14 @@ ASTNode *AST::transform_node_iter(syntax_tree_node *n) {
     // id & num
     // 由不同的表达式填充
     if (n->children_num == 3) {
+      // 变量声明
       node->id = n->children[1]->name;
     } else if (n->children_num == 6) {
+      // 数组声明
       node->id = n->children[1]->name;
+      // num中存放数组大小
       int num = std::stoi(n->children[3]->name);
+      // 创建一个结点用于存放数组大小
       auto num_node = std::make_shared<ASTNum>();
       num_node->i_val = num;
       num_node->type = TYPE_INT;
@@ -135,11 +139,14 @@ ASTNode *AST::transform_node_iter(syntax_tree_node *n) {
     return node;
   } else if (_STR_EQ(n->name, "compound-stmt")) {
     auto node = new ASTCompoundStmt();
+    // 处理local_declarations
     if (n->children[1]->children_num == 2) {
       // flatten local declarations
       auto list_ptr = n->children[1];
       std::stack<syntax_tree_node *> s;
       while (list_ptr->children_num == 2) {
+        // 将var-declaration入栈，list_ptr=local-declarations
+        // 直到local-declarations=empty
         s.push(list_ptr->children[1]);
         list_ptr = list_ptr->children[0];
       }
@@ -148,11 +155,12 @@ ASTNode *AST::transform_node_iter(syntax_tree_node *n) {
         auto decl_node =
             static_cast<ASTVarDeclaration *>(transform_node_iter(s.top()));
         auto decl_node_ptr = std::shared_ptr<ASTVarDeclaration>(decl_node);
+        // 将decl_node_ptr添加到ASTCompoundStmt的local_declarations列表中
         node->local_declarations.push_back(decl_node_ptr);
         s.pop();
       }
     }
-
+    // 处理statement-list
     if (n->children[2]->children_num == 2) {
       // flatten statement-list
       auto list_ptr = n->children[2];

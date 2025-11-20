@@ -19,6 +19,7 @@ class Scope {
     // exit a scope
     void exit() { inner.pop_back(); }
 
+    // 当inner的大小为1时，表示只有全局作用域
     bool in_global() { return inner.size() == 1; }
 
     // push a name to scope
@@ -30,9 +31,11 @@ class Scope {
     }
 
     Value *find(const std::string& name) {
+        // 使用反向迭代器，s是一个map
         for (auto s = inner.rbegin(); s != inner.rend(); s++) {
             auto iter = s->find(name);
             if (iter != s->end()) {
+                // 如果找到了，使用iter.second返回值value
                 return iter->second;
             }
         }
@@ -112,5 +115,9 @@ class CminusfBuilder : public ASTVisitor {
         Function *func = nullptr;
         // detect scope pre-enter (for elegance only)
         bool pre_enter_scope = false;
+        // break 语句跳转的目标基本块
+        BasicBlock *break_target = nullptr;   
+        // continue 语句跳转的目标基本块
+        BasicBlock *continue_target = nullptr; 
     } context;
 };
