@@ -110,7 +110,7 @@ suite = [
 ]
 
 def eval():
-    # 获取优化选项
+    # 获取优化选项，从py脚本命令行参数中读取，这个参数会传递给cminusfc编译器使用，生成对应优化的llvm IR
     opt_flags = []
     if len(sys.argv) > 1:
         for arg in sys.argv[1:]:
@@ -120,11 +120,15 @@ def eval():
                 opt_flags.append("-func-inline")
             elif arg == "const-prop":
                 opt_flags.append("-const-prop")
-
+    # 打开结果输出文件
     f = open("eval_result", 'w')
+    # 编译器路径
     EXE_PATH = "../../../build/cminusfc"
+    # 测试用例路径
     TEST_BASE_PATH = "./testcases/"
+    # 测试用输入输出路径
     ANSWER_BASE_PATH = "./answers/"
+    # 总分
     total_points = 0
     
     # 写入使用的优化选项信息
@@ -134,9 +138,11 @@ def eval():
         f.write('Running without optimizations\n\n')
 
     for level in suite:
+        # 每个lv的分数
         lv_points = 0
         has_bonus = True
         level_name = level[0]
+        # 当全部完成时，会有额外加分
         bonus = level[2]
         cases = level[1]
         f.write('===========%s START========\n' % level_name)
@@ -145,8 +151,10 @@ def eval():
             TEST_PATH = TEST_BASE_PATH + level_name + "/" + case
             ANSWER_PATH = ANSWER_BASE_PATH + level_name + "/" + case
             score = cases[case][0]
+            # 是否需要输入
             need_input = cases[case][1]
 
+            # 生成的可执行文件
             COMMAND = [TEST_PATH]
 
             try:
@@ -155,12 +163,14 @@ def eval():
                 cmd.extend(opt_flags)  # 添加所有优化选项
                 cmd.append(TEST_PATH + ".cminus")
                 
+                # 运行cminusfc编译器，将.cminus文件编译为llvm IR，后缀为.ll
                 result = subprocess.run(cmd, stderr=subprocess.PIPE, timeout=1)
             except Exception as _:
                 f.write('\tFail\n')
                 continue
 
             if result.returncode == 0:
+                # 使用clang编译生成的llvm IR为可执行文件，链接上cminus_io库，可执行
                 subprocess.run(["clang", "-O0", "-w", "-no-pie", TEST_PATH +
                                ".ll", "-o", TEST_PATH, "-L", "../../../build", "-lcminus_io"])
                 input_option = None
@@ -169,10 +179,12 @@ def eval():
                         input_option = fin.read()
 
                 try:
+                    # 运行可执行文件，获取输出
                     result = subprocess.run(
                         COMMAND, input=input_option, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=1)
                     with open(ANSWER_PATH + ".out", "rb") as fout:
                         if result.stdout == fout.read():
+                            # 比较输出结果
                             f.write('\tSuccess\n')
                             lv_points += score
                         else:

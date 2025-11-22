@@ -16,10 +16,13 @@ class Dominators : public Pass {
     void run_on_func(Function *f);
 
     // functions for getting information
+    // 该函数的返回值是某个基本块的直接支配者
     BasicBlock *get_idom(BasicBlock *bb) { return idom_.at(bb); }
+    // 该函数的返回值是某个基本块的支配边界集合
     const BBSet &get_dominance_frontier(BasicBlock *bb) {
         return dom_frontier_.at(bb);
     }
+    // 该函数的返回值是某个基本块的支配树中的后继节点集合
     const BBSet &get_dom_tree_succ_blocks(BasicBlock *bb) {
         return dom_tree_succ_blocks_.at(bb);
     }
@@ -29,15 +32,18 @@ class Dominators : public Pass {
     void dump_dominator_tree(Function *f);
 
     // functions for dominance tree
+    // 判断bb1是否支配bb2
     const bool is_dominate(BasicBlock *bb1, BasicBlock *bb2) {
         return dom_tree_L_.at(bb1) <= dom_tree_L_.at(bb2) &&
                dom_tree_R_.at(bb1) >= dom_tree_L_.at(bb2);
     }
 
+    // 获取支配树的dfs序列
     const std::vector<BasicBlock *> &get_dom_dfs_order() {
         return dom_dfs_order_;
     }
 
+    // 获取支配树的后序序列
     const std::vector<BasicBlock *> &get_dom_post_order() {
         return dom_post_order_;
     }

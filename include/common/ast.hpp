@@ -116,6 +116,7 @@ struct ASTNum : ASTFactor {
 
 struct ASTVarDeclaration : ASTDeclaration {
     virtual Value* accept(ASTVisitor &) override final;
+    // 用于数组声明，nullptr表示非数组
     std::shared_ptr<ASTNum> num;
 };
 

@@ -151,9 +151,16 @@ Value* CminusfBuilder::visit(ASTVarDeclaration &node) {
     return alloca;
 }
 
+// 处理函数定义语句
+// 1. 根据返回值类型（只能为int，float和void）创建函数类型
+// 2. 根据函数参数列表和返回值类型创建函数
+// 3. 将函数添加到作用域中
+// 4. 创建函数的入口基本块
+// 5. 处理函数参数，分配栈上空间并存储参数
 Value* CminusfBuilder::visit(ASTFunDeclaration &node) {
     FunctionType *fun_type;
     Type *ret_type;
+    // 函数参数类型列表
     std::vector<Type *> param_types;
     // 获取函数返回值
     if (node.type == TYPE_INT)
@@ -163,7 +170,7 @@ Value* CminusfBuilder::visit(ASTFunDeclaration &node) {
     else
         ret_type = VOID_T;
 
-    // 获取函数参数列表
+    // 根据AST结点中数据，创建函数参数列表
     for (auto &param : node.params) {
         if (param->type == TYPE_INT) {
             if (param->isarray) {
@@ -179,8 +186,7 @@ Value* CminusfBuilder::visit(ASTFunDeclaration &node) {
             }
         }
     }
-
-    // 获取函数类型
+    // 根据参数列表和函数返回值类型获取函数类型
     fun_type = FunctionType::get(ret_type, param_types);
     // 创建函数
     auto func = Function::create(fun_type, node.id, module.get());
@@ -196,15 +202,16 @@ Value* CminusfBuilder::visit(ASTFunDeclaration &node) {
     scope.enter();
     context.pre_enter_scope = true;
     std::vector<Value *> args;
-    // 获取函数的参数
+    // 获取函数的参数列表
     for (auto &arg : func->get_args()) {
         args.push_back(&arg);
     }
     for (unsigned int i = 0; i < node.params.size(); ++i) {
+        // 调用每个参数的accept方法，处理函数参数，为每个函数的参数分配栈上空间，并返回分配的内存地址param_i
         auto* param_i = node.params[i]->accept(*this);
-        // 将AST中的变量名赋值给args[i]
+        // 将IR中的参数（如%arg0）重命名为AST中的参数名
         args[i]->set_name(node.params[i]->id);
-        // 创建指令
+        // 将参数值存储到分配的内存地址中
         builder->create_store(args[i], param_i);
         // 将参数名和内存地址添加到作用域中
         scope.push(args[i]->get_name(), param_i);
@@ -227,6 +234,9 @@ Value* CminusfBuilder::visit(ASTFunDeclaration &node) {
     return nullptr;
 }
 
+// 处理函数参数
+// 1. 根据参数类型分配栈上空间
+// 2. 返回分配的内存地址
 Value* CminusfBuilder::visit(ASTParam &node) {
     // 这段代码应该实现为函数参数分配栈上空间，测试案例一直是无参数，所以不会被调用
     // 获取对应的LLVM类型，参数只有int和float两种类型，无void型
@@ -244,7 +254,9 @@ Value* CminusfBuilder::visit(ASTParam &node) {
             param_type = FLOATPTR_T;
         }
     }
+    // 创建一条栈上分配内存指令
     auto alloca=builder->create_alloca(param_type);
+    // 返回分配的内存地址
     return alloca;
 }
 
@@ -662,6 +674,10 @@ Value* CminusfBuilder::visit(ASTTerm &node) {
     return ret_val;
 }
 
+// 处理函数调用语句
+// 1. 获取函数指针
+// 2. 处理参数列表
+// 3. 创建函数调用指令
 Value* CminusfBuilder::visit(ASTCall &node) {
     // 在作用域中根据函数名查找函数
     auto *func = dynamic_cast<Function *>(scope.find(node.id));
@@ -669,6 +685,8 @@ Value* CminusfBuilder::visit(ASTCall &node) {
     auto param_type = func->get_function_type()->param_begin();
     for (auto &arg : node.args) {
         auto *arg_val = arg->accept(*this);
+        // 如果参数类型不一致且不是指针类型，则进行类型转换
+        // 如果是指针类型，则不进行类型转换，直接传递参数
         if (!arg_val->get_type()->is_pointer_type() &&
             *param_type != arg_val->get_type()) {
             if (arg_val->get_type()->is_integer_type()) {
@@ -678,8 +696,10 @@ Value* CminusfBuilder::visit(ASTCall &node) {
             }
         }
         args.push_back(arg_val);
+        // 迭代器移动到下一个参数
         param_type++;
     }
 
+    // 创建函数调用指令
     return builder->create_call(static_cast<Function *>(func), args);
 }

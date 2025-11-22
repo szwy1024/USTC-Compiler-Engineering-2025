@@ -7,6 +7,7 @@ void Dominators::run() {
     for(auto &f1 : m_->get_functions()) {
         auto f = &f1;
         if(f->is_declaration())
+            // 如果是函数声明，跳过
             continue;
         run_on_func(f);
     }
@@ -16,6 +17,8 @@ void Dominators::run_on_func(Function *f) {
     dom_post_order_.clear();
     dom_dfs_order_.clear();
     for(auto &bb1 : f->get_basic_blocks()) {
+        // 获取所有基本块，设置当前基本块的直接支配者为nullptr，
+        // 支配边界集合为空，后续节点集合为空
         auto bb = &bb1;
         idom_.insert({bb, nullptr});
         dom_frontier_.insert({bb, {}});
@@ -28,6 +31,7 @@ void Dominators::run_on_func(Function *f) {
     create_dom_dfs_order(f);
 }
 
+// 利用后续编号，计算两个基本块的最近公共支配者，越靠近根结点，后续编号越大
 BasicBlock *Dominators::intersect(BasicBlock *b1, BasicBlock *b2) {
     while (b1 != b2) {
         while (get_post_order(b1) < get_post_order(b2)) {
@@ -40,6 +44,7 @@ BasicBlock *Dominators::intersect(BasicBlock *b1, BasicBlock *b2) {
     return b1;
 }
 
+// 使用DFS计算函数控制流图的逆后序序列
 void Dominators::create_reverse_post_order(Function *f) {
     BBSet visited;
     dfs(f->get_entry_block(), visited);
@@ -49,13 +54,16 @@ void Dominators::dfs(BasicBlock *bb, std::set<BasicBlock *> &visited) {
     visited.insert(bb);
     for (auto &succ : bb->get_succ_basic_blocks()) {
         if (visited.find(succ) == visited.end()) {
+            // succ不在visited中，继续dfs
             dfs(succ, visited);
         }
     }
+    // 逆后序序列
     post_order_vec_.push_back(bb);
     post_order_.insert({bb, post_order_.size()});
 }
 
+// 计算某个函数中各个基本块的直接支配者
 void Dominators::create_idom(Function *f) {
     // 分析得到 f 中各个基本块的 idom
     idom_[f->get_entry_block()] = f->get_entry_block();
@@ -86,6 +94,7 @@ void Dominators::create_idom(Function *f) {
     } while (changed);
 }
 
+// 计算某个函数中各个基本块的支配边界集合
 void Dominators::create_dominance_frontier(Function *f) {
     // 分析得到 f 中各个基本块的支配边界集合
     for (auto &bb1 : f->get_basic_blocks()) {
@@ -103,6 +112,7 @@ void Dominators::create_dominance_frontier(Function *f) {
 
 }
 
+// 创建支配树的后继节点集合
 void Dominators::create_dom_tree_succ(Function *f) {
     // 分析得到 f 中各个基本块的支配树后继
     for (auto &bb1 : f->get_basic_blocks()) {
@@ -113,6 +123,7 @@ void Dominators::create_dom_tree_succ(Function *f) {
     }
 }
 
+// 创建支配树上的dfs序
 void Dominators::create_dom_dfs_order(Function *f) {
     // 分析得到 f 中各个基本块的支配树上的dfs序L,R
     unsigned int order = 0;

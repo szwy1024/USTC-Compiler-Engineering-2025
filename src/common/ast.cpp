@@ -25,42 +25,47 @@ AST::AST(syntax_tree *s) {
   root = std::shared_ptr<ASTProgram>(static_cast<ASTProgram *>(node));
 }
 
+// 传入一个syntax_tree_node指针，根据名称进行转换，返回对应的ASTNode指针
 ASTNode *AST::transform_node_iter(syntax_tree_node *n) {
-  /*
-  example:
-  program -> declaration-list
-  declaration-list -> declaration-list declaration | declaration
-  将其转化成AST中ASTProgram的结构
-  */
+
   if (_STR_EQ(n->name, "program")) {
     auto node = new ASTProgram();
 
-    // flatten declaration list
-    std::stack<syntax_tree_node *>
-        s; // 为什么这里要用stack呢？如果用其他数据结构应该如何实现
+    std::stack<syntax_tree_node *> s; 
     auto list_ptr = n->children[0];
+    // list_ptr指向declaration-list节点
     while (list_ptr->children_num == 2) {
+      // 如果declaration-list有两个子节点，说明是declaration-list declaration形，将declaration入栈
+      // 然后list_ptr指向declaration-list节点，继续循环
       s.push(list_ptr->children[1]);
       list_ptr = list_ptr->children[0];
     }
+    // 处理最后一个declaration节点
     s.push(list_ptr->children[0]);
 
     while (!s.empty()) {
+      // 处理栈顶的declaration节点
       auto child_node =
           static_cast<ASTDeclaration *>(transform_node_iter(s.top()));
-
+      // 使用shared_ptr管理内存
       auto child_node_shared = std::shared_ptr<ASTDeclaration>(child_node);
+      // 添加到program的declarations列表中
       node->declarations.push_back(child_node_shared);
+      // 弹出栈顶的declaration节点
       s.pop();
     }
+    // 返回ASTProgram节点
     return node;
   } else if (_STR_EQ(n->name, "declaration")) {
+    // declaration -> var-declaration | fun-declaration
+    // declaration只有一个子节点，直接递归转换该子节点
     return transform_node_iter(n->children[0]);
   } else if (_STR_EQ(n->name, "var-declaration")) {
     auto node = new ASTVarDeclaration();
     // NOTE: 思考 ASTVarDeclaration的结构，需要填充的字段有哪些
     // type
     // 为什么不会有 TYPE_VOID?
+    // 答：因为变量声明不允许void类型
     if (_STR_EQ(n->children[0]->children[0]->name, "int"))
       node->type = TYPE_INT;
     else
@@ -69,11 +74,13 @@ ASTNode *AST::transform_node_iter(syntax_tree_node *n) {
     // 由不同的表达式填充
     if (n->children_num == 3) {
       // 变量声明
+      // 获取变量名称
       node->id = n->children[1]->name;
     } else if (n->children_num == 6) {
       // 数组声明
+      // 获取数组名称
       node->id = n->children[1]->name;
-      // num中存放数组大小
+      // 将描述数组大小的字符串转换为整数
       int num = std::stoi(n->children[3]->name);
       // 创建一个结点用于存放数组大小
       auto num_node = std::make_shared<ASTNum>();
@@ -103,6 +110,7 @@ ASTNode *AST::transform_node_iter(syntax_tree_node *n) {
 
     // flatten params
     std::stack<syntax_tree_node *> s;
+    // 我觉得这里有问题，
     auto list_ptr = n->children[3]->children[0];
     if (list_ptr->children_num != 0) {
       if (list_ptr->children_num == 3) {
