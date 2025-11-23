@@ -108,23 +108,9 @@ Value* CminusfBuilder::visit(ASTVarDeclaration &node) {
         auto array_type = ArrayType::get(var_type, array_size);
         
         if (scope.in_global()) {
-            // 初始化一个vector用于存放指针
-            std::vector<Constant*> init_vals(array_size);
-            Constant* init_val = nullptr;
-            
-            if (node.type == TYPE_INT) {
-                init_val = CONST_INT(0);
-            } else {
-                init_val = CONST_FP(0.0f);
-            }
-            
-            for (unsigned i = 0; i < array_size; i++) {
-                // 初始化每个指针的值都为init_val
-                init_vals[i] = init_val;
-            }
-            
-            auto const_array = ConstantArray::get(array_type, init_vals);
-            alloca = GlobalVariable::create(name, module.get(), array_type, false, const_array);
+            // 全局数组变量
+            Constant* init_val = ConstantZero::get(array_type, module.get());
+            alloca = GlobalVariable::create(name, module.get(), array_type, false, init_val);
         }
         else {
             // 局部数组变量
@@ -574,12 +560,12 @@ Value* CminusfBuilder::visit(ASTVar &node) {
             // 返回变量地址
             return baseAddr;
         } else {
-            if(alloctype->is_array_type()){
-                return builder->create_gep(baseAddr, {CONST_INT(0),CONST_INT(0)});
-            } else {
-                return builder->create_load(baseAddr);
-            }
-            
+            // if(alloctype->is_array_type()){
+            //     return builder->create_gep(baseAddr, {CONST_INT(0),CONST_INT(0)});
+            // } else {
+            //     return builder->create_load(baseAddr);
+            // }
+            return builder->create_load(baseAddr);
         }
     }
     return nullptr;
