@@ -15,15 +15,19 @@ bool promote(IRBuilder *builder, Value **l_val_p, Value **r_val_p) {
     bool is_int = false;
     auto &l_val = *l_val_p;
     auto &r_val = *r_val_p;
+    // 如果两个类型相同
     if (l_val->get_type() == r_val->get_type()) {
+        // 如果两个类型相同，返回 true if integer type
         is_int = l_val->get_type()->is_integer_type();
     } else {
+        // 不同类型时，进行类型提升，提升后均为浮点型，返回 false
         if (l_val->get_type()->is_integer_type()) {
             l_val = builder->create_sitofp(l_val, FLOAT_T);
         } else {
             r_val = builder->create_sitofp(r_val, FLOAT_T);
         }
     }
+    // 返回 true if integer type
     return is_int;
 }
 
@@ -35,7 +39,11 @@ bool promote(IRBuilder *builder, Value **l_val_p, Value **r_val_p) {
  * scope.find: find and return the value bound to the name
  */
 
+ // 处理所有declarations
+ // 1. 遍历declarations列表，处理每个declaration节点
+ // 2. 返回最后一个declaration处理的返回值
 Value* CminusfBuilder::visit(ASTProgram &node) {
+    // 从模块中获取常用类型
     VOID_T = module->get_void_type();
     INT1_T = module->get_int1_type();
     INT32_T = module->get_int32_type();
@@ -50,13 +58,22 @@ Value* CminusfBuilder::visit(ASTProgram &node) {
     return ret_val;
 }
 
+// 处理数字字面量
 Value* CminusfBuilder::visit(ASTNum &node) {
     if (node.type == TYPE_INT) {
+        // 返回指向整型常量的指针
         return CONST_INT(node.i_val);
     }
+    // 返回指向浮点型常量的指针
     return CONST_FP(node.f_val);
 }
 
+// 处理变量声明语句
+// 1. 根据变量类型和是否为数组创建相应的类型
+// 2. 在全局或局部作用域中分配变量空间
+// 3. 初始化变量为0
+// 4. 将变量添加到作用域中
+// 5. 返回分配的变量空间指针
 Value* CminusfBuilder::visit(ASTVarDeclaration &node) {
     // TODO: This function is empty now.
     // Add some code here.
@@ -91,7 +108,7 @@ Value* CminusfBuilder::visit(ASTVarDeclaration &node) {
         auto array_type = ArrayType::get(var_type, array_size);
         
         if (scope.in_global()) {
-            // 全局数组变量
+            // 初始化一个vector用于存放指针
             std::vector<Constant*> init_vals(array_size);
             Constant* init_val = nullptr;
             
@@ -102,6 +119,7 @@ Value* CminusfBuilder::visit(ASTVarDeclaration &node) {
             }
             
             for (unsigned i = 0; i < array_size; i++) {
+                // 初始化每个指针的值都为init_val
                 init_vals[i] = init_val;
             }
             
@@ -113,6 +131,7 @@ Value* CminusfBuilder::visit(ASTVarDeclaration &node) {
             alloca = builder->create_alloca(array_type);
             // 局部数组初始化为0
             for (int i = 0; i < array_size; i++) {
+                // 创建gep获取数组元素的指针
                 auto element_ptr = builder->create_gep(alloca, {CONST_INT(0), CONST_INT(i)});
                 if (node.type == TYPE_INT) {
                     builder->create_store(CONST_INT(0), element_ptr);
@@ -157,6 +176,9 @@ Value* CminusfBuilder::visit(ASTVarDeclaration &node) {
 // 3. 将函数添加到作用域中
 // 4. 创建函数的入口基本块
 // 5. 处理函数参数，分配栈上空间并存储参数
+// 6. 处理函数体
+// 7. 如果函数没有返回语句，添加默认返回语句
+// 8. 退出函数作用域
 Value* CminusfBuilder::visit(ASTFunDeclaration &node) {
     FunctionType *fun_type;
     Type *ret_type;
@@ -285,7 +307,7 @@ Value* CminusfBuilder::visit(ASTCompoundStmt &node) {
     // 处理语句列表
     BasicBlock *current_bb = builder->get_insert_block();
     for (auto &stmt : node.statement_list) {
-        // 如果前一个语句终止了基本块，需要创建新的基本块
+        // 如果当前基本块已经终止了，且仍在当前基本块中插入代码，则创建一个新的基本块继续插入
         if (current_bb->is_terminated() && current_bb == builder->get_insert_block()) {
             auto new_bb = BasicBlock::create(module.get(), "", context.func);
             builder->set_insert_point(new_bb);
@@ -320,15 +342,30 @@ Value* CminusfBuilder::visit(ASTExpressionStmt &node) {
     return nullptr;
 }
 
+// 处理选择语句
+// 1. 处理条件表达式，获取条件值
+// 2. 创建基本块用于if分支，else分支（如果有）
+// 3. 创建基本块用于if-else语句后的继续执行
+// 4. 根据条件值创建条件跳转指令
+// 5. 处理if语句块
+// 6. 如果有else语句块，处理else语句块
+// 7. 设置插入点到继续执行的基本块
+// 8. 返回nullptr
 Value* CminusfBuilder::visit(ASTSelectionStmt &node) {
+    // 表达式返回的条件值
     auto *ret_val = node.expression->accept(*this);
+    // 创建if分支和else分支的基本块，以及继续执行的基本块
     auto *trueBB = BasicBlock::create(module.get(), "", context.func);
     BasicBlock *falseBB{};
+    // 创建继续执行基本块
     auto *contBB = BasicBlock::create(module.get(), "", context.func);
     Value *cond_val = nullptr;
+    // 根据返回值类型，选择合适的比较指令
     if (ret_val->get_type()->is_integer_type()) {
+        // 创建整数比较指令，cond_val为布尔类型的条件值
         cond_val = builder->create_icmp_ne(ret_val, CONST_INT(0));
     } else {
+        // 创建浮点数比较指令，cond_val为布尔类型的条件值
         cond_val = builder->create_fcmp_ne(ret_val, CONST_FP(0.));
     }
 
@@ -450,22 +487,35 @@ Value* CminusfBuilder::visit(ASTReturnStmt &node) {
     return nullptr;
 }
 
+// 处理变量访问
+// 1. 在作用域中查找变量地址
+// 2. 获取变量类型，可能是基本类型或数组类型
+// 3. 如果有下标表达式，处理下标表达式，进行数组访问
+// 4. 根据context中require_lvalue标志，决定返回变量地址或加载变量值
 Value* CminusfBuilder::visit(ASTVar &node) {
+    // 在作用域中根据名称查找变量地址
     Value* baseAddr = this->scope.find(node.id);
+    // 获取变量类型，可能是基本类型或数组类型
     Type* alloctype = nullptr;
     
     if(baseAddr->is<AllocaInst>()) {
+        // 如果是栈上分配的变量，获取其类型
         alloctype = baseAddr->as<AllocaInst>()->get_alloca_type();
     } else {
+        // 如果是全局变量，获取其类型
         alloctype = baseAddr->as<GlobalVariable>()->get_type()->get_pointer_element_type();
     }
 
+    // 如果有下标表达式，处理下标表达式，进行数组访问
     if(node.expression) {
         bool original_require_lvalue = context.require_lvalue;
+        // 因为表达式可能嵌套，所以先设置为不需要左值，避免递归时错误，等递归结束后再恢复
         context.require_lvalue = false;
+        // 处理下标表达式
         auto idx = node.expression->accept(*this);
         context.require_lvalue = original_require_lvalue;
 
+        // 类型转换，确保下标是整型
         if (idx->get_type()->is_float_type()) {
             idx = builder->create_fptosi(idx, INT32_T);
         } else if(idx->get_type()->is_int1_type()){
@@ -474,23 +524,35 @@ Value* CminusfBuilder::visit(ASTVar &node) {
         auto right_bb = BasicBlock::create(module.get(), "", context.func);
         auto wrong_bb = BasicBlock::create(module.get(), "", context.func);
         
+        // 生成检查下标是否为负数的代码
         auto cond_neg = builder->create_icmp_ge(idx, CONST_INT(0));
         builder->create_cond_br(cond_neg,right_bb, wrong_bb);
 
+        // 查找异常处理函数
         auto wrong = scope.find("neg_idx_except");
+        // 设置插入点为wrong_bb，向wrong_bb中插入调用异常处理函数的代码
         builder->set_insert_point(wrong_bb);
+        // 插入调用异常处理函数的指令
         builder->create_call(wrong, {});
+        // 插入一条br指令，跳转到right_bb
         builder->create_br(right_bb);
+        // 设置插入点到right_bb
         builder->set_insert_point(right_bb);
         
+        // 需要左值的情况，即赋值语句
         if(context.require_lvalue) {
             if(alloctype->is_pointer_type()) {
+                // 将栈上分配的指针加载出来
                 baseAddr = builder->create_load(baseAddr);
+                // 根据下标在数组中计算元素地址
                 baseAddr = builder->create_gep(baseAddr,{idx});
             } else if(alloctype->is_array_type()){ 
+                // 如果是数组类型，计算元素地址
                 baseAddr = builder->create_gep(baseAddr,{CONST_INT(0),idx});
             }
+            // 处理完设置require_lvalue为false
             context.require_lvalue = false;
+            // 返回元素地址
             return baseAddr;
         } else {
             if(alloctype->is_pointer_type()){
@@ -499,14 +561,18 @@ Value* CminusfBuilder::visit(ASTVar &node) {
             } else if(alloctype->is_array_type()){ 
                 baseAddr = builder->create_gep(baseAddr,{CONST_INT(0),idx});
             }
+            // 如果不需要左值，加载元素值并返回
+            // 例如在表达式中使用数组元素arr[i]
             baseAddr = builder->create_load(baseAddr);
             return baseAddr;
         }
     } else {
+        // 处理普通变量访问
         if (context.require_lvalue) {
+            // 设置require_lvalue为false
             context.require_lvalue = false;
+            // 返回变量地址
             return baseAddr;
-            // return builder->create_gep(baseAddr, {CONST_INT(0)});
         } else {
             if(alloctype->is_array_type()){
                 return builder->create_gep(baseAddr, {CONST_INT(0),CONST_INT(0)});
@@ -519,8 +585,12 @@ Value* CminusfBuilder::visit(ASTVar &node) {
     return nullptr;
 }
 
+// 处理赋值表达式
 Value* CminusfBuilder::visit(ASTAssignExpression &node) {
+    // 递归处理，最后一定是简单表达式
+    // 获取简单表达式的值
     auto *expr_result = node.expression->accept(*this);
+    // context中标记需要左值
     context.require_lvalue = true;
     auto *var_addr = node.var->accept(*this);
     if (var_addr->get_type()->get_pointer_element_type() !=
@@ -618,6 +688,7 @@ Value* CminusfBuilder::visit(ASTSimpleExpression &node) {
 }
 
 Value* CminusfBuilder::visit(ASTAdditiveExpression &node) {
+    // 如果加法表达式没有左侧表达式，直接处理右侧项
     if (node.additive_expression == nullptr) {
         return node.term->accept(*this);
     }
@@ -646,6 +717,7 @@ Value* CminusfBuilder::visit(ASTAdditiveExpression &node) {
 }
 
 Value* CminusfBuilder::visit(ASTTerm &node) {
+    // 如果乘法表达式没有左侧表达式，直接处理右侧项
     if (node.term == nullptr) {
         return node.factor->accept(*this);
     }

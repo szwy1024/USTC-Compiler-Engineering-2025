@@ -109,7 +109,7 @@ class CminusfBuilder : public ASTVisitor {
     std::unique_ptr<Module> module;
 
     struct {
-        // whether require lvalue
+        // 是否需要左值
         bool require_lvalue = false;
         // function that is being built
         Function *func = nullptr;

@@ -97,7 +97,7 @@ ASTNode *AST::transform_node_iter(syntax_tree_node *n) {
     // 由表达式和 ASTFunDeclaration的结构，我们需要填充
     // type, id, params, compound_stmt 这四个字段
     auto node = new ASTFunDeclaration();
-    // type 字段填充
+    // 处理 type 字段
     if (_STR_EQ(n->children[0]->children[0]->name, "int")) {
       node->type = TYPE_INT;
     } else if (_STR_EQ(n->children[0]->children[0]->name, "float")) {
@@ -105,53 +105,66 @@ ASTNode *AST::transform_node_iter(syntax_tree_node *n) {
     } else {
       node->type = TYPE_VOID;
     }
-    // id 字段填充
+    // 处理 id 字段
     node->id = n->children[1]->name;
 
-    // flatten params
+    // 处理 params 字段
     std::stack<syntax_tree_node *> s;
-    // 我觉得这里有问题，
+
     auto list_ptr = n->children[3]->children[0];
     if (list_ptr->children_num != 0) {
+      // 如果孩子数为0，说明没有参数，为void类型
       if (list_ptr->children_num == 3) {
         while (list_ptr->children_num == 3) {
+          // 如果孩子数是3，说明是 param , param-list 结构，将param入栈
           s.push(list_ptr->children[2]);
           list_ptr = list_ptr->children[0];
         }
       }
+      // 处理最后一个param节点
       s.push(list_ptr->children[0]);
 
       while (!s.empty()) {
+        // 处理栈顶的param节点，转换为ASTParam节点
         auto child_node = static_cast<ASTParam *>(transform_node_iter(s.top()));
+        //  使用shared_ptr管理内存
         auto child_node_shared = std::shared_ptr<ASTParam>(child_node);
+        // 添加到fun-declaration的params列表中
         node->params.push_back(child_node_shared);
+        // 弹出栈顶的param节点
         s.pop();
       }
     }
 
+    // 处理 compound-stmt
     auto stmt_node =
         static_cast<ASTCompoundStmt *>(transform_node_iter(n->children[5]));
+    // 使用shared_ptr管理内存
     node->compound_stmt = std::shared_ptr<ASTCompoundStmt>(stmt_node);
     return node;
   } else if (_STR_EQ(n->name, "param")) {
     // param -> type-specifier ID | type-specifier ID [ ]
+    // 如int a 或 float b[]
     // ASTParam的结构 主要需要填充的属性有 type, id, isarray
     auto node = new ASTParam();
     if (_STR_EQ(n->children[0]->children[0]->name, "int"))
       node->type = TYPE_INT;
     else
       node->type = TYPE_FLOAT;
+    // 设置参数的名称
     node->id = n->children[1]->name;
     if (n->children_num > 2)
+    // 根据使用的产生式长度判断是否为数组参数
       node->isarray = true;
     return node;
   } else if (_STR_EQ(n->name, "compound-stmt")) {
     auto node = new ASTCompoundStmt();
     // 处理local_declarations
     if (n->children[1]->children_num == 2) {
-      // flatten local declarations
+      // 有局部变量声明，需要flatten
       auto list_ptr = n->children[1];
       std::stack<syntax_tree_node *> s;
+      // 将所有var-declaration的语法分析树结点入栈
       while (list_ptr->children_num == 2) {
         // 将var-declaration入栈，list_ptr=local-declarations
         // 直到local-declarations=empty
@@ -159,7 +172,9 @@ ASTNode *AST::transform_node_iter(syntax_tree_node *n) {
         list_ptr = list_ptr->children[0];
       }
 
+      // 处理局部变量声明
       while (!s.empty()) {
+        // 处理栈顶的var-declaration节点，转换为ASTVarDeclaration节点
         auto decl_node =
             static_cast<ASTVarDeclaration *>(transform_node_iter(s.top()));
         auto decl_node_ptr = std::shared_ptr<ASTVarDeclaration>(decl_node);
@@ -170,14 +185,16 @@ ASTNode *AST::transform_node_iter(syntax_tree_node *n) {
     }
     // 处理statement-list
     if (n->children[2]->children_num == 2) {
+      // 如果有语句列表，需要flatten
       // flatten statement-list
       auto list_ptr = n->children[2];
       std::stack<syntax_tree_node *> s;
+      // 将所有statement的语法分析树结点入栈
       while (list_ptr->children_num == 2) {
         s.push(list_ptr->children[1]);
         list_ptr = list_ptr->children[0];
       }
-
+      // 处理语句列表
       while (!s.empty()) {
         auto stmt_node =
             static_cast<ASTStatement *>(transform_node_iter(s.top()));
@@ -188,9 +205,11 @@ ASTNode *AST::transform_node_iter(syntax_tree_node *n) {
     }
     return node;
   } else if (_STR_EQ(n->name, "statement")) {
+    // 向下传递，处理statement的具体类型
     return transform_node_iter(n->children[0]);
   } else if (_STR_EQ(n->name, "expression-stmt")) {
     auto node = new ASTExpressionStmt();
+    // 表达式不为空，处理expression
     if (n->children_num == 2) {
       auto expr_node =
           static_cast<ASTExpression *>(transform_node_iter(n->children[0]));
@@ -202,22 +221,25 @@ ASTNode *AST::transform_node_iter(syntax_tree_node *n) {
   } else if (_STR_EQ(n->name, "selection-stmt")) {
     auto node = new ASTSelectionStmt();
 
+    // 处理expression
     auto expr_node =
         static_cast<ASTExpression *>(transform_node_iter(n->children[2]));
     auto expr_node_ptr = std::shared_ptr<ASTExpression>(expr_node);
     node->expression = expr_node_ptr;
 
+    // 处理if-statement
     auto if_stmt_node =
         static_cast<ASTStatement *>(transform_node_iter(n->children[4]));
     auto if_stmt_node_ptr = std::shared_ptr<ASTStatement>(if_stmt_node);
+    // 设置if_statement字段
     node->if_statement = if_stmt_node_ptr;
 
-    // check whether this selection statement contains
-    // else structure
+   // 检查是否有else语句
     if (n->children_num == 7) {
       auto else_stmt_node =
           static_cast<ASTStatement *>(transform_node_iter(n->children[6]));
       auto else_stmt_node_ptr = std::shared_ptr<ASTStatement>(else_stmt_node);
+      // 设置else_statement字段
       node->else_statement = else_stmt_node_ptr;
     }
 
@@ -225,19 +247,26 @@ ASTNode *AST::transform_node_iter(syntax_tree_node *n) {
   } else if (_STR_EQ(n->name, "iteration-stmt")) {
     auto node = new ASTIterationStmt();
 
+    // 处理expression
     auto expr_node =
         static_cast<ASTExpression *>(transform_node_iter(n->children[2]));
     auto expr_node_ptr = std::shared_ptr<ASTExpression>(expr_node);
+    // 设置expression字段 
     node->expression = expr_node_ptr;
 
+
+    // 处理statement
     auto stmt_node =
         static_cast<ASTStatement *>(transform_node_iter(n->children[4]));
     auto stmt_node_ptr = std::shared_ptr<ASTStatement>(stmt_node);
+    // 添加到iteration-stmt的statement字段
     node->statement = stmt_node_ptr;
 
     return node;
   } else if (_STR_EQ(n->name, "return-stmt")) {
     auto node = new ASTReturnStmt();
+    // 有返回的expression，处理expression
+    // 没有返回值的return语句，expression为空
     if (n->children_num == 3) {
       auto expr_node =
           static_cast<ASTExpression *>(transform_node_iter(n->children[1]));
@@ -247,13 +276,17 @@ ASTNode *AST::transform_node_iter(syntax_tree_node *n) {
   } else if (_STR_EQ(n->name, "expression")) {
     // simple-expression
     if (n->children_num == 1) {
+      // 如果只有一个子节点，处理simple-expression
       return transform_node_iter(n->children[0]);
     }
+    // 否则是 var = simple-expression，处理赋值表达式
     auto node = new ASTAssignExpression();
 
+    // 处理var节点
     auto var_node = static_cast<ASTVar *>(transform_node_iter(n->children[0]));
     node->var = std::shared_ptr<ASTVar>(var_node);
 
+    // 处理simple-expression节点
     auto expr_node =
         static_cast<ASTExpression *>(transform_node_iter(n->children[2]));
     node->expression = std::shared_ptr<ASTExpression>(expr_node);
@@ -261,7 +294,9 @@ ASTNode *AST::transform_node_iter(syntax_tree_node *n) {
     return node;
   } else if (_STR_EQ(n->name, "var")) {
     auto node = new ASTVar();
+    // 获取变量名称
     node->id = n->children[0]->name;
+    // 检查是否有数组索引，如果有，处理expression
     if (n->children_num == 4) {
       auto expr_node =
           static_cast<ASTExpression *>(transform_node_iter(n->children[2]));
@@ -270,12 +305,15 @@ ASTNode *AST::transform_node_iter(syntax_tree_node *n) {
     return node;
   } else if (_STR_EQ(n->name, "simple-expression")) {
     auto node = new ASTSimpleExpression();
+    // 处理第一个additive-expression
     auto expr_node_1 = static_cast<ASTAdditiveExpression *>(
         transform_node_iter(n->children[0]));
     node->additive_expression_l =
         std::shared_ptr<ASTAdditiveExpression>(expr_node_1);
 
+    // 检查是否有第二个additive-expression
     if (n->children_num == 3) {
+      // 获取关系运算符，并设置op字段
       auto op_name = n->children[1]->children[0]->name;
       if (_STR_EQ(op_name, "<="))
         node->op = OP_LE;
@@ -290,6 +328,7 @@ ASTNode *AST::transform_node_iter(syntax_tree_node *n) {
       else if (_STR_EQ(op_name, "!="))
         node->op = OP_NEQ;
 
+      // 处理第二个additive-expression
       auto expr_node_2 = static_cast<ASTAdditiveExpression *>(
           transform_node_iter(n->children[2]));
       node->additive_expression_r =
@@ -299,21 +338,27 @@ ASTNode *AST::transform_node_iter(syntax_tree_node *n) {
   } else if (_STR_EQ(n->name, "additive-expression")) {
     auto node = new ASTAdditiveExpression();
     if (n->children_num == 3) {
+      // 如果有两个子节点，处理additive-expression
       auto add_expr_node = static_cast<ASTAdditiveExpression *>(
           transform_node_iter(n->children[0]));
+      // 设置additive_expression字段
       node->additive_expression =
           std::shared_ptr<ASTAdditiveExpression>(add_expr_node);
 
+      // 获取加减运算符，并设置op字段
       auto op_name = n->children[1]->children[0]->name;
       if (_STR_EQ(op_name, "+"))
         node->op = OP_PLUS;
       else if (_STR_EQ(op_name, "-"))
         node->op = OP_MINUS;
 
+      // / 处理term节点
       auto term_node =
           static_cast<ASTTerm *>(transform_node_iter(n->children[2]));
+      // 设置term字段
       node->term = std::shared_ptr<ASTTerm>(term_node);
     } else {
+      // 只有一个子节点，处理term节点
       auto term_node =
           static_cast<ASTTerm *>(transform_node_iter(n->children[0]));
       node->term = std::shared_ptr<ASTTerm>(term_node);
@@ -322,20 +367,24 @@ ASTNode *AST::transform_node_iter(syntax_tree_node *n) {
   } else if (_STR_EQ(n->name, "term")) {
     auto node = new ASTTerm();
     if (n->children_num == 3) {
+      // 处理左侧的term节点
       auto term_node =
           static_cast<ASTTerm *>(transform_node_iter(n->children[0]));
       node->term = std::shared_ptr<ASTTerm>(term_node);
 
+      // 获取乘除运算符，并设置op字段
       auto op_name = n->children[1]->children[0]->name;
       if (_STR_EQ(op_name, "*"))
         node->op = OP_MUL;
       else if (_STR_EQ(op_name, "/"))
         node->op = OP_DIV;
 
+      // 处理右侧的factor节点
       auto factor_node =
           static_cast<ASTFactor *>(transform_node_iter(n->children[2]));
       node->factor = std::shared_ptr<ASTFactor>(factor_node);
     } else {
+      // 只有一个子节点，处理factor节点
       auto factor_node =
           static_cast<ASTFactor *>(transform_node_iter(n->children[0]));
       node->factor = std::shared_ptr<ASTFactor>(factor_node);
@@ -345,11 +394,14 @@ ASTNode *AST::transform_node_iter(syntax_tree_node *n) {
     int i = 0;
     if (n->children_num == 3)
       i = 1;
+    // 获取子节点的名称，判断是哪种factor类型
     auto name = n->children[i]->name;
     if (_STR_EQ(name, "expression") || _STR_EQ(name, "var") ||
         _STR_EQ(name, "call"))
+        // 如果是expression, var, call类型，递归转换该子节点
       return transform_node_iter(n->children[i]);
     else {
+      // 否则是num类型，创建ASTNum节点，包含类型和数值
       auto num_node = new ASTNum();
       if (_STR_EQ(name, "integer")) {
         num_node->type = TYPE_INT;
@@ -367,19 +419,24 @@ ASTNode *AST::transform_node_iter(syntax_tree_node *n) {
     node->id = n->children[0]->name;
     // flatten args
     if (_STR_EQ(n->children[2]->children[0]->name, "arg-list")) {
+      // 指向参数列表
       auto list_ptr = n->children[2]->children[0];
       auto s = std::stack<syntax_tree_node *>();
+      // 将所有expression节点入栈
       while (list_ptr->children_num == 3) {
         s.push(list_ptr->children[2]);
         list_ptr = list_ptr->children[0];
       }
       s.push(list_ptr->children[0]);
 
+      // 循环处理栈中的expression节点，创建ASTExpression节点并添加到args列表中
       while (!s.empty()) {
+        // 处理栈顶的expression节点
         auto expr_node =
             static_cast<ASTExpression *>(transform_node_iter(s.top()));
         auto expr_node_ptr = std::shared_ptr<ASTExpression>(expr_node);
         node->args.push_back(expr_node_ptr);
+        // 弹出栈顶的expression节点
         s.pop();
       }
     }
