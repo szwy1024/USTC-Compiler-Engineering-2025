@@ -40,11 +40,49 @@ bool DeadCode::clear_basic_blocks(Function *func) {
 
 void DeadCode::mark(Function *func) {
     // TODO
+    for (auto &bb : func->get_basic_blocks()) {
+        for (auto &inst : bb.get_instructions()) {
+            marked[&inst] = false;
+        }
+    }
     
+    // 将关键指令加入工作列表
+    for (auto &bb : func->get_basic_blocks()) {
+        for (auto &inst : bb.get_instructions()) {
+            if (is_critical(&inst)) {
+                work_list.push_back(&inst);
+                marked[&inst] = true;
+            }
+        }
+    }
+    
+    // 广度优先标记所有被使用的指令
+    while (!work_list.empty()) {
+        auto *inst = work_list.front();
+        work_list.pop_front();
+        
+        // 标记操作数的定义指令
+        for (auto *op : inst->get_operands()) {
+            if (op->get_type()->is_label_type()) {
+                continue; // 跳过标签类型
+            }
+            
+            if (auto *op_inst = dynamic_cast<Instruction *>(op)) {
+                if (!marked[op_inst]) {
+                    marked[op_inst] = true;
+                    work_list.push_back(op_inst);
+                }
+            }
+        }
+    }
 }
 
 void DeadCode::mark(Instruction *ins) {
     // TODO
+    if (!marked[ins]) {
+        marked[ins] = true;
+        work_list.push_back(ins);
+    }
 }
 
 bool DeadCode::sweep(Function *func) {
@@ -58,10 +96,20 @@ bool DeadCode::sweep(Function *func) {
     std::unordered_set<Instruction *> wait_del{};
 
     // 1. 收集所有未被标记的指令
- 
+    for (auto &bb : func->get_basic_blocks()) {
+        for (auto &inst : bb.get_instructions()) {
+            if (!marked[&inst]) {
+                wait_del.insert(&inst);
+            }
+        }
+    }
 
     // 2. 执行删除
-  
+    for (auto *inst : wait_del) {
+        inst->remove_all_operands();
+        inst->get_parent()->erase_instr(inst);
+        ins_count++;
+    }
     
     return not wait_del.empty(); // changed
 }
@@ -73,7 +121,19 @@ bool DeadCode::is_critical(Instruction *ins) {
     // 2. 如果是无用的分支指令，则无用
     // 3. 如果是无用的返回指令，则无用
     // 4. 如果是无用的存储指令，则无用
+    // 关键指令（不能被删除的指令）
+    if (ins->is_ret() || ins->is_br() || ins->is_store() || ins->is_call()) {
+        // 对于函数调用，如果函数不是纯函数，则是关键指令
+        if (ins->is_call()) {
+            auto *called_func = dynamic_cast<Function *>(ins->get_operand(0));
+            if (called_func && func_info->is_pure_function(called_func)) {
+                return false; // 纯函数调用不是关键指令
+            }
+        }
+        return true; // 其他关键指令
+    }
     
+    return false; // 非关键指令
 }
 
 void DeadCode::sweep_globally() {

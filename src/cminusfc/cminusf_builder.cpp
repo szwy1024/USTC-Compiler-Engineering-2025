@@ -117,7 +117,7 @@ Value* CminusfBuilder::visit(ASTVarDeclaration &node) {
             alloca = builder->create_alloca(array_type);
             // 局部数组初始化为0
             for (int i = 0; i < array_size; i++) {
-                // 创建gep获取数组元素的指针
+                // 创建gep获取数组元素的地址
                 auto element_ptr = builder->create_gep(alloca, {CONST_INT(0), CONST_INT(i)});
                 if (node.type == TYPE_INT) {
                     builder->create_store(CONST_INT(0), element_ptr);
@@ -321,6 +321,8 @@ Value* CminusfBuilder::visit(ASTCompoundStmt &node) {
     return nullptr;
 }
 
+// 处理表达式语句
+// 如果表达式不为空，处理表达式
 Value* CminusfBuilder::visit(ASTExpressionStmt &node) {
     if (node.expression != nullptr) {
         return node.expression->accept(*this);
@@ -355,9 +357,11 @@ Value* CminusfBuilder::visit(ASTSelectionStmt &node) {
         cond_val = builder->create_fcmp_ne(ret_val, CONST_FP(0.));
     }
 
+    // 如果没有else分支
     if (node.else_statement == nullptr) {
         builder->create_cond_br(cond_val, trueBB, contBB);
     } else {
+        // 如果有else分支，创建else基本块
         falseBB = BasicBlock::create(module.get(), "", context.func);
         builder->create_cond_br(cond_val, trueBB, falseBB);
     }
@@ -481,9 +485,10 @@ Value* CminusfBuilder::visit(ASTReturnStmt &node) {
 Value* CminusfBuilder::visit(ASTVar &node) {
     // 在作用域中根据名称查找变量地址
     Value* baseAddr = this->scope.find(node.id);
-    // 获取变量类型，可能是基本类型或数组类型
+    // 获取变量类型
     Type* alloctype = nullptr;
     
+    // 这个地址只有两种可能：栈上分配的变量，或者全局变量
     if(baseAddr->is<AllocaInst>()) {
         // 如果是栈上分配的变量，获取其类型
         alloctype = baseAddr->as<AllocaInst>()->get_alloca_type();
@@ -525,20 +530,21 @@ Value* CminusfBuilder::visit(ASTVar &node) {
         // 设置插入点到right_bb
         builder->set_insert_point(right_bb);
         
-        // 需要左值的情况，即赋值语句
+        // 需要左值的情况，即赋值语句，需要返回地址
         if(context.require_lvalue) {
             if(alloctype->is_pointer_type()) {
                 // 将栈上分配的指针加载出来
                 baseAddr = builder->create_load(baseAddr);
                 // 根据下标在数组中计算元素地址
                 baseAddr = builder->create_gep(baseAddr,{idx});
-            } else if(alloctype->is_array_type()){ 
+            } 
+            else if(alloctype->is_array_type()){ 
                 // 如果是数组类型，计算元素地址
                 baseAddr = builder->create_gep(baseAddr,{CONST_INT(0),idx});
             }
             // 处理完设置require_lvalue为false
             context.require_lvalue = false;
-            // 返回元素地址
+            // 返回元素地址，如a[i]=5中的a[i]地址
             return baseAddr;
         } else {
             if(alloctype->is_pointer_type()){
@@ -560,11 +566,7 @@ Value* CminusfBuilder::visit(ASTVar &node) {
             // 返回变量地址
             return baseAddr;
         } else {
-            // if(alloctype->is_array_type()){
-            //     return builder->create_gep(baseAddr, {CONST_INT(0),CONST_INT(0)});
-            // } else {
-            //     return builder->create_load(baseAddr);
-            // }
+            // 返回指向新创建的LoadInst对象的指针
             return builder->create_load(baseAddr);
         }
     }
@@ -572,22 +574,31 @@ Value* CminusfBuilder::visit(ASTVar &node) {
 }
 
 // 处理赋值表达式
+// 1. 处理右侧表达式，获取表达式值
+// 2. 设置context中require_lvalue标志为true，处理左侧变量，获取变量地址
+// 3. 如果变量类型和表达式类型不匹配，进行类型转换
+// 4. 将表达式值存储到变量地址中
+// 5. 返回表达式结果，以支持链式赋值
 Value* CminusfBuilder::visit(ASTAssignExpression &node) {
     // 递归处理，最后一定是简单表达式
     // 获取简单表达式的值
     auto *expr_result = node.expression->accept(*this);
     // context中标记需要左值
     context.require_lvalue = true;
+    // 交由ASTVar处理左侧变量，获取变量地址
     auto *var_addr = node.var->accept(*this);
     if (var_addr->get_type()->get_pointer_element_type() !=
         expr_result->get_type()) {
+            // 如果变量类型和表达式类型不匹配，进行类型转换，以左值类型为准
         if (expr_result->get_type() == INT32_T) {
-            expr_result = builder->create_sitofp(expr_result, FLOAT_T);
+            expr_result = builder->create_sitofp(expr_result, INT32_T);
         } else {
-            expr_result = builder->create_fptosi(expr_result, INT32_T);
+            expr_result = builder->create_fptosi(expr_result, FLOAT_T);
         }
     }
+    // 将表达式的值存储到变量地址中
     builder->create_store(expr_result, var_addr);
+    // 返回表达式结果，以便支持链式赋值
     return expr_result;
 }
 
@@ -735,7 +746,7 @@ Value* CminusfBuilder::visit(ASTTerm &node) {
 // 处理函数调用语句
 // 1. 获取函数指针
 // 2. 处理参数列表
-// 3. 创建函数调用指令
+// 3. 创建函数调用指令，返回调用结果
 Value* CminusfBuilder::visit(ASTCall &node) {
     // 在作用域中根据函数名查找函数
     auto *func = dynamic_cast<Function *>(scope.find(node.id));
