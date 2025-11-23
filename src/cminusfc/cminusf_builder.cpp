@@ -108,7 +108,7 @@ Value* CminusfBuilder::visit(ASTVarDeclaration &node) {
         auto array_type = ArrayType::get(var_type, array_size);
         
         if (scope.in_global()) {
-            // 全局数组变量
+            // 使用ConstantZero初始化全局数组变量
             Constant* init_val = ConstantZero::get(array_type, module.get());
             alloca = GlobalVariable::create(name, module.get(), array_type, false, init_val);
         }
